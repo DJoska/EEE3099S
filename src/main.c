@@ -32,9 +32,9 @@ uint8_t mid_r = 0; //middle right sensor reading
 uint8_t c_l = 0; //corner left sensor reading
 uint8_t c_r = 0; //corner right sensor reading
 uint8_t ADC_reference=0; //if above this value then we know that sensor reading will be high and on black line (inverse is true)
-int sensor1;
-int sensor2;
-int sensor3;
+uint8_t sensor1;
+uint8_t sensor2;
+uint8_t sensor3;
 //====================================================================
 // FUNCTION DECLARATIONS
 //====================================================================
@@ -43,10 +43,11 @@ void Delay(void);
 int sampleADC(int channel);
 void init_ADC(void);
 void init_PWM(void);
-int read_sensor(int channel);
+uint8_t read_sensor(int channel);
 void init_EXTI(void);
 void EXTI2_3_IRQHandler (void);
 void get_moving(void);
+void check_sensors(void);
 //====================================================================
 // MAIN FUNCTION
 //====================================================================
@@ -56,12 +57,13 @@ void main (void)
 	init_ADC();
 	init_PWM();
 	init_LCD();
-	init_EXTI();
-
 	GPIOB -> ODR = 0b0;
+	//init_EXTI();
+
 	for(;;)
 	{
-
+		//get_moving();
+		check_sensors();
 		//CHECK ADC REFERENCE TO EACH SENSOR CHANNEL AND MAKE A TURN OR GO STRAIGHT OR STOP AT JUNCTION etc based off input
 
 	}									// Loop forever
@@ -75,15 +77,19 @@ void init_EXTI (void)
 	RCC -> APB2ENR |= RCC_APB2ENR_SYSCFGCOMPEN; // ENABLE EXTI BUS CLK
 	SYSCFG -> EXTICR[0] |= SYSCFG_EXTICR1_EXTI3_PA; // MAP INTERRUPT TO PA3
 	EXTI -> IMR |= EXTI_IMR_MR3; // UNBLOCK INTERRUPT LINE 1 BUS
-	EXTI -> FTSR |= EXTI_FTSR_TR3; // CONDITION CHECK: FALLING-EDGE
-	NVIC_EnableIRQ(EXTI2_3_IRQn); // ENABLE LINE 0 &amp; LINE 1 INTERRUPT
+	EXTI -> FTSR |= EXTI_FTSR_TR3; // CONDITION CHECK: RISING-EDGE
+	NVIC_EnableIRQ(EXTI2_3_IRQn); // ENABLE LINE 2 & LINE 3 INTERRUPT
 }
+
 
 void EXTI2_3_IRQHandler (void)
 {
 	EXTI -> PR |= EXTI_PR_PR3; // EXIT INTERRUPT
 
 	// User Interrupt Service Routine Here
+	GPIOB -> ODR = 0b01000011;
+	delay(100000);
+	GPIOB -> ODR = 0b0;
 	get_moving();
 }
 
@@ -93,17 +99,11 @@ void init_GPIO(void)
 	RCC -> AHBENR |= RCC_AHBENR_GPIOAEN;	//enable port a
 	RCC -> AHBENR |= RCC_AHBENR_GPIOBEN;	//enable port b
 
-	GPIOA -> MODER &= ~GPIO_MODER_MODER1; //set PA1, input mode
-	GPIOA -> MODER &= ~GPIO_MODER_MODER2; //set PA2, input mode
-	GPIOA -> MODER &= ~GPIO_MODER_MODER3; //set PA3, input mode
-
 	//set pull-up resistors on ports A0-3
-	GPIOA->PUPDR |= (GPIO_PUPDR_PUPDR0_0|
-						GPIO_PUPDR_PUPDR1_0|
-						GPIO_PUPDR_PUPDR2_0|
-						GPIO_PUPDR_PUPDR3_0);
+	GPIOA->PUPDR |= 0b01010101;
 
-	GPIOA -> MODER |= GPIO_MODER_MODER4; //set PA4, analogue mode
+	GPIOA -> MODER |=0; //set all switches to inputs
+	GPIOA -> MODER |= GPIO_MODER_MODER1; //set PA1, analogue mode
 	GPIOA -> MODER |= GPIO_MODER_MODER5; //set PA5, analogue mode
 	GPIOA -> MODER |= GPIO_MODER_MODER6; //set PA6, analogue mode
 
@@ -112,6 +112,10 @@ void init_GPIO(void)
 						GPIO_MODER_MODER1_0|
 						GPIO_MODER_MODER2_0|
 						GPIO_MODER_MODER3_0|
+						GPIO_MODER_MODER4_0|
+						GPIO_MODER_MODER5_0|
+						GPIO_MODER_MODER6_0|
+						GPIO_MODER_MODER7_0|
 						GPIO_MODER_MODER12_0|
 						GPIO_MODER_MODER13_0|
 						GPIO_MODER_MODER14_0|
@@ -125,37 +129,45 @@ for(int i=0; i<1000; i++)
    for(int k=0; k<2000; k++);
 }
 
-void get_moving(void){
-	for(;;){
-		sensor1 = read_sensor(4);
-		sensor2 = read_sensor(5);
-		sensor3 = read_sensor(6);
+void check_sensors(void){
+	sensor1 = read_sensor(5);
+	sensor2 = read_sensor(6);
+	sensor3 = read_sensor(1);
 
-		GPIOB -> ODR = 0b1001000000000000;
+	GPIOB -> ODR = sensor1;
+}
+
+void get_moving(void){
+
+		sensor1 = read_sensor(5);
+		sensor2 = read_sensor(6);
+		sensor3 = read_sensor(1);
 
 		//TODO Try 5 as the threshold
-		if(sensor1<=2){
+		if(sensor2<2){
 			//move forward
-			TIM2->CCR3 = 50*80;
-			TIM2->CCR4 = 50*80;
-			//GPIOB -> ODR = 0b1001000000000000;
+			TIM2->CCR3 = 70*80;
+			TIM2->CCR4 = 70*80;
+			GPIOB -> ODR = 0b1001000001000000;
 		}
-		else if(sensor2<=2){
+		else if(sensor1<2){
 			//correct left
-			TIM2->CCR3 = 30*80;
-			TIM2->CCR4 = 50*80;
-			//GPIOB -> ODR = 0b1010000000000000;
-		}else if(sensor3<=2){
+			TIM2->CCR3 = 70*80;
+			TIM2->CCR4 = 70*80;
+			GPIOB -> ODR = 0b0101000001000000;
+		}else if(sensor3<2){
 			//correct right
-			TIM2->CCR3 = 50*80;
-			TIM2->CCR4 = 30*80;
-			//GPIOB -> ODR = 0b0110000000000000;
-		}else if(sensor1>2 && sensor2>2 && sensor3>2){
-			TIM2->CCR3 = 50*80;
-			TIM2->CCR4 = 50*80;
+			TIM2->CCR3 = 70*80;
+			TIM2->CCR4 = 70*80;
 			GPIOB -> ODR = 0b1010000000000000;
+		}else if(sensor1>=2 && sensor2>=2 && sensor3>=2){
+			TIM2->CCR3 = 70*80;
+			TIM2->CCR4 = 70*80;
+			GPIOB -> ODR = 0b0;
+		}else{
+			GPIOB -> ODR = 0b0;
 		}
-	}//end for
+
 
 }//end get moving function
 
@@ -173,7 +185,7 @@ void init_ADC(void){
 	ADC1 -> CFGR1 &= ~ADC_CFGR1_ALIGN; //right align
 	ADC1 -> CFGR1 &= ~ADC_CFGR1_CONT; //single conversion mode
 
-	ADC1 -> CR |= ADC_CR_ADEN; //enable ADC
+	//ADC1 -> CR |= ADC_CR_ADEN; //enable ADC
 	//while((ADC1->ISR & ADC_ISR_ADRDY) == 0); //exits loop when ADRDY == 1
 }
 
@@ -186,8 +198,8 @@ int sampleADC(int channel){
 
 	ADC1 -> CR |= ADC_CR_ADSTART; //start ADC
 	while((ADC1 -> ISR & ADC_ISR_EOC) ==0); //wait for end of conversion
-	int ADCval=ADC1 -> DR; //get adc value
-	return ADCval;
+	int ADCval = ADC1 -> DR; //get adc value
+	return (int)(ADCval);
 	ADC1 -> CHSELR &= 0b0;	//disable channel
 }
 
@@ -215,7 +227,7 @@ void init_PWM(void) {
 	//Takes in ADC channel to be converted (1,2,3,4,5,6). Corresponding channel is selected
 	//and sampled. Sampled sensor value is returned. uint8_t return type is sufficient since
 	//ADC is configured to 8 bit resolution
-int read_sensor(int channel){
+uint8_t read_sensor(int channel){
 
 	int channel_bitmask;
 	switch(channel){
@@ -238,9 +250,12 @@ int read_sensor(int channel){
 		case 6:
 			channel_bitmask = ADC_CHSELR_CHSEL6; // Channel 6 (mapped to c_l sensor)
 			break;
+		case 7:
+			channel_bitmask = ADC_CHSELR_CHSEL7; // Channel 6 (mapped to c_l sensor)
+			break;
 
 }
-	int val = sampleADC(channel_bitmask);
+	uint8_t val = (uint8_t)sampleADC(channel_bitmask);
 	return val;
 }
 
